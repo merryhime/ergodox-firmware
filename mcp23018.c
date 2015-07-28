@@ -50,206 +50,64 @@
 #define TWI_SM_OK 1
 #define TWI_SM_ERR 2
 
-static uint8_t twi_substate = 0;
+// twi_sm functions return 1 if OK and 0 on ERROR
 
-static uint8_t twi_sm_start() {
-	TWI_DEBUG({print("twi_sm_start "); phex(twi_substate); print("\n");});
-	switch (twi_substate) {
-	case 0:
-		{
-			//Send start
-			TWCR = (1<<TWINT) | (1<<TWSTA) | (1<<TWEN) | (1<<TWIE);
-			twi_substate = 1;
-			return TWI_SM_OK;
-		}
-	default:
-		{
-			uint8_t twst = TW_STATUS;
-			if (twst != TW_START) {
-				({print("!TW_START in twi_sm_start\n");});
-				twi_substate = 0;
-				return TWI_SM_ERR;
-			}
+#define TWI_SM(NAME, ARGS1, DO1, DO2) \
+	static uint8_t twi_sm_##NAME##1 ARGS1 DO1 \
+	static uint8_t twi_sm_##NAME##2 () { uint8_t twst = TW_STATUS; DO2 }
 
-			twi_substate = 0;
-			return TWI_SM_CONTINUE;
-		}
-	}
-}
+TWI_SM(start, (), {
+	TWCR = (1<<TWINT) | (1<<TWSTA) | (1<<TWEN) | (1<<TWIE);
+	return 1;
+}, {
+	return (twst == TW_START);
+});
 
-static uint8_t twi_sm_repstart() {
-	TWI_DEBUG({print("twi_sm_repstart "); phex(twi_substate); print("\n");});
-	switch (twi_substate) {
-	case 0:
-		{
-			//Send start
-			TWCR = (1<<TWINT) | (1<<TWSTA) | (1<<TWEN) | (1<<TWIE);
-			twi_substate = 1;
-			return TWI_SM_OK;
-		}
-	default:
-		{
-			uint8_t twst = TW_STATUS;
-			if (twst != TW_REP_START) {
-				({print("!TW_REP_START in twi_sm_repstart\n");});
-				twi_substate = 0;
-				return TWI_SM_ERR;
-			}
+TWI_SM(repstart, (), {
+	TWCR = (1<<TWINT) | (1<<TWSTA) | (1<<TWEN) | (1<<TWIE);
+	return 1;
+}, {
+	return (twst == TW_REP_START);
+});
 
-			twi_substate = 0;
-			return TWI_SM_CONTINUE;
-		}
-	}
-}
+TWI_SM(addr, (uint8_t addr), {
+	TWDR = addr;
+	TWCR = (1<<TWINT) | (1<<TWEN) | (1<<TWIE);
+	return 1;
+}, {
+	return (twst == TW_MT_SLA_ACK || twst == TW_MR_SLA_ACK);
+});
 
-static uint8_t twi_sm_addr(uint8_t addr) {
-	TWI_DEBUG({print("twi_sm_addr "); phex(twi_substate); print(" "); phex(addr); print("\n");});
-	switch (twi_substate) {
-	case 0:
-		{
-			TWDR = addr;
-			TWCR = (1<<TWINT) | (1<<TWEN) | (1<<TWIE);
-			twi_substate = 1;
-			return TWI_SM_OK;
-		}
-	default:
-		{
-			uint8_t twst = TW_STATUS;
-			if (twst != TW_MT_SLA_ACK && twst != TW_MR_SLA_ACK) {
-				({print("!TW_Mx_SLA_ACK in twi_sm_addr\n");});
-				twi_substate = 0;
-				return TWI_SM_ERR;
-			}
+TWI_SM(send, (uint8_t data), {
+	TWDR = data;
+	TWCR = (1<<TWINT) | (1<<TWEN) | (1<<TWIE);
+	return 1;
+}, {
+	return (twst == TW_MT_DATA_ACK);
+});
 
-			twi_substate = 0;
-			return TWI_SM_CONTINUE;
-		}
-	}
-}
+// Data is in TWDR register afterwards.
+TWI_SM(recvack, (), {
+	TWCR = (1<<TWINT) | (1<<TWEN) | (1<<TWEA) | (1<<TWIE);
+	return 1;
+}, {
+	return (twst == TW_MR_DATA_ACK);
+});
 
-static uint8_t twi_sm_send(uint8_t data) {
-	TWI_DEBUG({print("twi_sm_send "); phex(twi_substate); print(" "); phex(data); print("\n");});
-	switch (twi_substate) {
-	case 0:
-		{
-			TWDR = data;
-			TWCR = (1<<TWINT) | (1<<TWEN) | (1<<TWIE);
-			twi_substate = 1;
-			return TWI_SM_OK;
-		}
-	default:
-		{
-			uint8_t twst = TW_STATUS;
-			if (twst != TW_MT_DATA_ACK) {
-				({print("!TW_MT_DATA_ACK in twi_sm_send\n");});
-				twi_substate = 0;
-				return TWI_SM_ERR;
-			}
+// Data is in TWDR register afterwards.
+TWI_SM(recvnak, (), {
+	TWCR = (1<<TWINT) | (1<<TWEN) | (1<<TWIE);
+	return 1;
+}, {
+	return (twst == TW_MR_DATA_NACK);
+});
 
-			twi_substate = 0;
-			return TWI_SM_CONTINUE;
-		}
-	}
-}
-
-static uint8_t twi_sm_recvack(uint8_t* data) {
-	TWI_DEBUG({print("twi_sm_recvack "); phex(twi_substate); print("\n");});
-	switch (twi_substate) {
-	case 0:
-		{
-			TWCR = (1<<TWINT) | (1<<TWEN) | (1<<TWEA) | (1<<TWIE);
-			twi_substate = 1;
-			return TWI_SM_OK;
-		}
-	default:
-		{
-			uint8_t twst = TW_STATUS;
-			if (twst != TW_MR_DATA_ACK) {
-				({print("!TW_MR_DATA_ACK in twi_sm_recvack\n");});
-				twi_substate = 0;
-				return TWI_SM_ERR;
-			}
-
-			*data = TWDR;
-			TWI_DEBUG({print("Got "); phex(*data); print("\n");});
-
-			twi_substate = 0;
-			return TWI_SM_CONTINUE;
-		}
-	}
-}
-
-static uint8_t twi_sm_recvnak(uint8_t* data) {
-	TWI_DEBUG({print("twi_sm_recvnak "); phex(twi_substate); print("\n");});
-	switch (twi_substate) {
-	case 0:
-		{
-			TWCR = (1<<TWINT) | (1<<TWEN) | (1<<TWIE);
-			twi_substate = 1;
-			return TWI_SM_OK;
-		}
-	default:
-		{
-			uint8_t twst = TW_STATUS;
-			if (twst != TW_MR_DATA_NACK) {
-				({print("!TW_MR_DATA_NACK in twi_sm_recvnak\n");});
-				twi_substate = 0;
-				return TWI_SM_ERR;
-			}
-
-			*data = TWDR;
-			TWI_DEBUG({print("Got "); phex(*data); print("\n");});
-
-			twi_substate = 0;
-			return TWI_SM_CONTINUE;
-		}
-	}
-}
-
-static uint8_t twi_sm_stopstart() {
-	TWI_DEBUG({print("twi_sm_stopstart "); phex(twi_substate); print("\n");});
-	switch (twi_substate) {
-	case 0:
-		{
-			//Send start
-			TWCR = (1<<TWINT) | (1<<TWSTA) | (1<<TWSTO) | (1<<TWEN) | (1<<TWIE);
-			twi_substate = 1;
-			return TWI_SM_OK;
-		}
-	default:
-		{
-			uint8_t twst = TW_STATUS;
-			if (twst != TW_START) {
-				({print("!TW_START in twi_sm_stopstart\n");});
-				twi_substate = 0;
-				return TWI_SM_ERR;
-			}
-
-			twi_substate = 0;
-			return TWI_SM_CONTINUE;
-		}
-	}
-}
-
-static void twi_sm_syncstop() {
-	TWI_DEBUG({print("twi_sm_syncstop\n");});
-	TWCR = (1<<TWINT) | (1<<TWSTO) | (1<<TWEN);
-	while (TWCR & (1<<TWSTO)) {}
-	twi_substate = 0;
-}
-
-#define DO(CALL)                              \
-	do {                                      \
-		switch (CALL) {                       \
-		case TWI_SM_OK:                       \
-			return;                           \
-		case TWI_SM_CONTINUE:                 \
-			mcp23018_state++;                 \
-			break; /*EXPECTS FALLTHROUGH!!*/  \
-		case TWI_SM_ERR:                      \
-			goto err;                         \
-		}                                     \
-	} while(0)
+TWI_SM(stopstart, (), {
+	TWCR = (1<<TWINT) | (1<<TWSTA) | (1<<TWSTO) | (1<<TWEN) | (1<<TWIE);
+	return 1;
+}, {
+	return (twst == TW_START);
+});
 
 #include "time.h"
 
@@ -257,21 +115,27 @@ static uint8_t left_scan[7] = {0, 0, 0, 0, 0, 0, 0};
 static volatile uint8_t mcp23018_doneflag = 0;
 static volatile uint8_t mcp23018_pollwaitflag = 0;
 static volatile uint8_t mcp23018_errorcount = 0;
-static uint8_t mcp23018_state = 0;
+static volatile uint8_t mcp23018_begincallable = 1;
+
+static void twi_sm_syncstop() {
+	TWCR = (1<<TWINT) | (1<<TWSTO) | (1<<TWEN);
+	while (TWCR & (1<<TWSTO)) {}
+	mcp23018_begincallable = 1;
+}
 
 void mcp23018_begin() {
-	if (mcp23018_state != 0 && mcp23018_state != 22) print("mcp23018_begin called in invalid state\n"); //lolidk
-	twi_substate = 0;
-	twi_sm_start();
+	if (!mcp23018_begincallable) { print("mcp23018_begin called in invalid state\n"); usb_debug_flush_output(); }
+	mcp23018_begincallable = 0;
+	twi_sm_start1();
 }
 
 extern uint8_t matrixscan[14];
 uint8_t mcp23018_poll() {
 	if (mcp23018_errorcount >= 2) {
 		// Could not detect left hand
-		static uint8_t restartcounter = 0;
+		static uint8_t restartcounter = 1;
 		restartcounter++;
-		if (restartcounter == 0) mcp23018_begin(); // Attempt to detect LH once every 256 scans (once every 0.4s).
+		if (restartcounter == 0 && mcp23018_begincallable) mcp23018_begin(); // Attempt to detect LH once every 256 scans (once every 0.4s).
 		return 0;
 	}
 
@@ -281,6 +145,7 @@ uint8_t mcp23018_poll() {
 		sleep_mode();
 	}
 	mcp23018_doneflag = 0;
+	mcp23018_pollwaitflag = 0;
 	matrixscan[0] = left_scan[0];
 	matrixscan[1] = left_scan[1];
 	matrixscan[2] = left_scan[2];
@@ -288,85 +153,102 @@ uint8_t mcp23018_poll() {
 	matrixscan[4] = left_scan[4];
 	matrixscan[5] = left_scan[5];
 	matrixscan[6] = left_scan[6];
-	if (mcp23018_errorcount < 2 && mcp23018_pollwaitflag != 2) {
+	if (mcp23018_begincallable && mcp23018_errorcount < 2) {
 		mcp23018_begin();
 	}
-	mcp23018_pollwaitflag = 0;
 	return 1;
 }
 
 // TWIE bit of TWCR needs to be set for this to be called when TWINT is raised.
+#define DO(CALL) if (CALL) state++; else goto err;
 ISR(TWI_vect) {
-	static uint8_t recv = 0;
+	static uint8_t state = 0;
 	static uint8_t col = 0;
-	switch (mcp23018_state) {
+	switch (state) {
 	// MCP23018 Init:
-	restart:
-	case 0:  DO(twi_sm_start());
-	case 1:  DO(twi_sm_addr(MCP23018_ADDR_WRITE));
-	case 2:  DO(twi_sm_send(MCP23018_IODIRA));
-	case 3:  DO(twi_sm_send(0b00000000));
-	case 4:  DO(twi_sm_send(0b00111111));
-	case 5:  DO(twi_sm_stopstart());
-	case 6:  DO(twi_sm_addr(MCP23018_ADDR_WRITE));
-	case 7:  DO(twi_sm_send(MCP23018_GPPUA));
-	case 8:  DO(twi_sm_send(0b00000000));
-	case 9:  DO(twi_sm_send(0b00111111));
-	case 10: DO(twi_sm_stopstart());
+	restart: state = 0;
+	case  0: DO(twi_sm_start2());
+	case  1: DO(twi_sm_addr1(MCP23018_ADDR_WRITE)); return;
+	case  2: DO(twi_sm_addr2());
+	case  3: DO(twi_sm_send1(MCP23018_IODIRA)); return;
+	case  4: DO(twi_sm_send2());
+	case  5: DO(twi_sm_send1(0b00000000)); return;
+	case  6: DO(twi_sm_send2());
+	case  7: DO(twi_sm_send1(0b00111111)); return;
+	case  8: DO(twi_sm_send2());
+	case  9: DO(twi_sm_stopstart1()); return;
+	case 10: DO(twi_sm_stopstart2());
+	case 11: DO(twi_sm_addr1(MCP23018_ADDR_WRITE)); return;
+	case 12: DO(twi_sm_addr2());
+	case 13: DO(twi_sm_send1(MCP23018_GPPUA)); return;
+	case 14: DO(twi_sm_send2());
+	case 15: DO(twi_sm_send1(0b00000000)); return;
+	case 16: DO(twi_sm_send2());
+	case 17: DO(twi_sm_send1(0b00111111)); return;
+	case 18: DO(twi_sm_send2());
+	case 19: DO(twi_sm_stopstart1()); return;
 	// Read
-	read: mcp23018_state = 11;
-	case 11: DO(twi_sm_addr(MCP23018_ADDR_WRITE));
-	case 12: DO(twi_sm_send(MCP23018_GPIOA));
-	case 13: DO(twi_sm_send(~(1 << col)));
-	case 14: DO(twi_sm_stopstart());
-	case 15: DO(twi_sm_addr(MCP23018_ADDR_WRITE));
-	case 16: DO(twi_sm_send(MCP23018_GPIOB));
-	case 17: DO(twi_sm_repstart());
-	case 18: DO(twi_sm_addr(MCP23018_ADDR_READ));
-	case 19: DO(twi_sm_recvnak(&recv));
-	case 20: {
-		TWI_DEBUG({phex(col); print(": "); pbin((~recv) & 0b00111111); print(" ");});
+	read:
+	case 20: DO(twi_sm_stopstart2());
+	case 21: DO(twi_sm_addr1(MCP23018_ADDR_WRITE)); return;
+	case 22: DO(twi_sm_addr2());
+	case 23: DO(twi_sm_send1(MCP23018_GPIOA)); return;
+	case 24: DO(twi_sm_send2());
+	case 25: DO(twi_sm_send1(~(1 << col))); return;
+	case 26: DO(twi_sm_send2());
+	case 27: DO(twi_sm_stopstart1()); return;
+	case 28: DO(twi_sm_stopstart2());
+	case 29: DO(twi_sm_addr1(MCP23018_ADDR_WRITE)); return;
+	case 30: DO(twi_sm_addr2());
+	case 31: DO(twi_sm_send1(MCP23018_GPIOB)); return;
+	case 32: DO(twi_sm_send2());
+	case 33: DO(twi_sm_repstart1()); return;
+	case 34: DO(twi_sm_repstart2());
+	case 35: DO(twi_sm_addr1(MCP23018_ADDR_READ)); return;
+	case 36: DO(twi_sm_addr2());
+	case 37: DO(twi_sm_recvnak1()); return;
+	case 38: DO(twi_sm_recvnak2());
+	case 39: {
+		uint8_t recv = TWDR;
 
 		left_scan[col] = (~recv) & 0b00111111;
 		
 		col++;
 		if (col <= 6) {
-			mcp23018_state = 21;
-			// FALLTHROUGH TO 21
+			state++;
 		} else {
-			TWI_DEBUG({print("\n");});
-			if (mcp23018_errorcount >= 2) print("LH connected\n");
 			mcp23018_errorcount = 0;
 			
 			col = 0;
 			mcp23018_doneflag = 1;
-			sleep_disable();
 
 			if (mcp23018_pollwaitflag) {
-				mcp23018_pollwaitflag = 2;
-				mcp23018_state = 21;
+				state++;
 			} else {
 				print("Time Budget Exceeded.\n");
-				mcp23018_state = 22;
+				state = 20;
 				twi_sm_syncstop();
 				return;
 			}
 		}
 	}
-	case 21: DO(twi_sm_stopstart()); goto read;
-	case 22: DO(twi_sm_start()); goto read;
+	case 40: DO(twi_sm_stopstart1()); state = 20; return;
 	default:
-		TWI_DEBUG({print("Why are you even here?\n");});
+		print("Why are you even here?\n");
 	}
 err:
 	twi_sm_syncstop();
 	if (mcp23018_errorcount < 2) {
-		pdec8(mcp23018_state); print(" desynced.\n");
+		pdec8(state); print(" desynced.\n");
 		mcp23018_errorcount++;
-		mcp23018_state = 0;
-		goto restart;
+		state = 0;
+		twi_sm_start1();
+		mcp23018_begincallable = 0;
+		return;
+	} else {
+		if (mcp23018_errorcount == 2) print("LH lost\n");
+		state = 0;
+		mcp23018_begincallable = 1;
+		mcp23018_errorcount = 3; // prevent overflow
 	}
-	if (mcp23018_errorcount == 2) print("LH lost\n");
-	mcp23018_state = 0;
-	mcp23018_errorcount = 3; // prevent overflow
 }

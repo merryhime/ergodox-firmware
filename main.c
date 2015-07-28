@@ -124,8 +124,8 @@ int main(void)
 	usb_init();
 	while (!usb_configured()) { idle_ms(1); }
 	
-	idle_ms(800);
-	print("Ready.\n");
+	idle_ms(1000);
+	print("Ready\n");
 	// Turn off all LEDs
 	led_set(0);
 

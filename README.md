@@ -10,7 +10,7 @@ This project was written for three reasons:
 
 This firmware features:
 
-* Fast matrix scans thanks to fast asynchronous I&sup2;C (669 scans/sec, 1.493 ms/scan)
+* Faster matrix scans thanks to fast asynchronous I&sup2;C (682 scans/sec, ~1.5 ms/scan)
 * NKRO (with boot protocol support)
 * Teensy CPU idles whenever possible to save power (about 80% of the time)
 
