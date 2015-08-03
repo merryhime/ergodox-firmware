@@ -1,3 +1,5 @@
+void mcp23018_init(void);
+
 // Note: No proper state checking. Will fail hard if called inappropriately.
 void mcp23018_begin(void);
 

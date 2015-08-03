@@ -25,13 +25,14 @@
  * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
+#include "config.h"
 #include <avr/io.h>
-#include <avr/pgmspace.h>
 #include <avr/interrupt.h>
 #include <util/twi.h>
 #include <avr/sleep.h>
-#include <util/delay.h>
+#include "mcp23018.h"
 #include "print.h"
+#include "time.h"
 
 #define TWI_DEBUG(a) /*nothing*/
 
@@ -53,17 +54,19 @@
 // twi_sm functions return 1 if OK and 0 on ERROR
 
 #define TWI_SM(NAME, ARGS1, DO1, DO2) \
+ 	static uint8_t twi_sm_##NAME##1 ARGS1; \
+ 	static uint8_t twi_sm_##NAME##2 (void); \
 	static uint8_t twi_sm_##NAME##1 ARGS1 DO1 \
-	static uint8_t twi_sm_##NAME##2 () { uint8_t twst = TW_STATUS; DO2 }
+	static uint8_t twi_sm_##NAME##2 (void) { uint8_t twst = TW_STATUS; DO2 }
 
-TWI_SM(start, (), {
+TWI_SM(start, (void), {
 	TWCR = (1<<TWINT) | (1<<TWSTA) | (1<<TWEN) | (1<<TWIE);
 	return 1;
 }, {
 	return (twst == TW_START);
 });
 
-TWI_SM(repstart, (), {
+TWI_SM(repstart, (void), {
 	TWCR = (1<<TWINT) | (1<<TWSTA) | (1<<TWEN) | (1<<TWIE);
 	return 1;
 }, {
@@ -86,64 +89,72 @@ TWI_SM(send, (uint8_t data), {
 	return (twst == TW_MT_DATA_ACK);
 });
 
+#if 0 //unused
 // Data is in TWDR register afterwards.
-TWI_SM(recvack, (), {
+TWI_SM(recvack, (void), {
 	TWCR = (1<<TWINT) | (1<<TWEN) | (1<<TWEA) | (1<<TWIE);
 	return 1;
 }, {
 	return (twst == TW_MR_DATA_ACK);
 });
+#endif
 
 // Data is in TWDR register afterwards.
-TWI_SM(recvnak, (), {
+TWI_SM(recvnak, (void), {
 	TWCR = (1<<TWINT) | (1<<TWEN) | (1<<TWIE);
 	return 1;
 }, {
 	return (twst == TW_MR_DATA_NACK);
 });
 
-TWI_SM(stopstart, (), {
+TWI_SM(stopstart, (void), {
 	TWCR = (1<<TWINT) | (1<<TWSTA) | (1<<TWSTO) | (1<<TWEN) | (1<<TWIE);
 	return 1;
 }, {
 	return (twst == TW_START);
 });
 
-#include "time.h"
-
 static uint8_t left_scan[7] = {0, 0, 0, 0, 0, 0, 0};
-static volatile uint8_t mcp23018_doneflag = 0;
-static volatile uint8_t mcp23018_pollwaitflag = 0;
-static volatile uint8_t mcp23018_errorcount = 0;
-static volatile uint8_t mcp23018_begincallable = 1;
+static volatile uint8_t mcp23018_pollwaitflag = 0;  // If 0 when scan completes: TWI process stops.
+static volatile uint8_t mcp23018_doneflag = 0;      // Set to 1 when TWI process has just completed a scan.
+static volatile uint8_t mcp23018_error = 0;         // Set to 1 when unable to complete a scan. Set to 0 when a scan completes.
+static volatile uint8_t mcp23018_forcereset = 1;    // If 1 when scan completes: TWI process sends config again.
+static volatile uint8_t mcp23018_begincallable = 1; // Set to 1 when TWI process stops. Call _begin() to restart.
 
-static void twi_sm_syncstop() {
+static void twi_sm_syncstop(void) {
 	TWCR = (1<<TWINT) | (1<<TWSTO) | (1<<TWEN);
 	while (TWCR & (1<<TWSTO)) {}
 	mcp23018_begincallable = 1;
 }
 
-void mcp23018_begin() {
-	if (!mcp23018_begincallable) { print("mcp23018_begin called in invalid state\n"); usb_debug_flush_output(); }
+void mcp23018_init(void) {
+	// TWI Prescaler
+	TWSR = 0;
+	TWBR = 10;
+}
+
+void mcp23018_begin(void) {
+	if (!mcp23018_begincallable) { print("mcp23018_begin called in invalid state\n"); return; }
 	mcp23018_begincallable = 0;
 	twi_sm_start1();
 }
 
 extern uint8_t matrixscan[14];
-uint8_t mcp23018_poll() {
-	if (mcp23018_errorcount >= 2) {
+uint8_t mcp23018_poll(void) {
+	if (mcp23018_error) {
 		// Could not detect left hand
 		static uint8_t restartcounter = 1;
 		restartcounter++;
-		if (restartcounter == 0 && mcp23018_begincallable) mcp23018_begin(); // Attempt to detect LH once every 256 scans (once every 0.4s).
+		if (restartcounter == 0) mcp23018_begin(); // Attempt to detect LH once every 256 scans (once every 0.4s).
 		return 0;
 	}
 
 	mcp23018_pollwaitflag = 1;
-	while (!mcp23018_doneflag && mcp23018_errorcount < 2) {
+	while (!mcp23018_doneflag && !mcp23018_error) {
 		set_sleep_mode(SLEEP_MODE_IDLE);
 		sleep_mode();
 	}
+
 	mcp23018_doneflag = 0;
 	mcp23018_pollwaitflag = 0;
 	matrixscan[0] = left_scan[0];
@@ -153,9 +164,18 @@ uint8_t mcp23018_poll() {
 	matrixscan[4] = left_scan[4];
 	matrixscan[5] = left_scan[5];
 	matrixscan[6] = left_scan[6];
-	if (mcp23018_begincallable && mcp23018_errorcount < 2) {
-		mcp23018_begin();
+
+	if (!mcp23018_error && mcp23018_begincallable) mcp23018_begin();
+
+	#if MCP23018_FORCERESET
+	static uint8_t lastresettime = 0;
+	uint8_t some_time_bits = (uint8_t)(milliseconds >> 8) & 0xF0;
+	if (some_time_bits != lastresettime) {
+		lastresettime = some_time_bits;
+		mcp23018_forcereset = 1;
 	}
+	#endif
+
 	return 1;
 }
 
@@ -166,7 +186,6 @@ ISR(TWI_vect) {
 	static uint8_t col = 0;
 	switch (state) {
 	// MCP23018 Init:
-	restart: state = 0;
 	case  0: DO(twi_sm_start2());
 	case  1: DO(twi_sm_addr1(MCP23018_ADDR_WRITE)); return;
 	case  2: DO(twi_sm_addr2());
@@ -188,7 +207,6 @@ ISR(TWI_vect) {
 	case 18: DO(twi_sm_send2());
 	case 19: DO(twi_sm_stopstart1()); return;
 	// Read
-	read:
 	case 20: DO(twi_sm_stopstart2());
 	case 21: DO(twi_sm_addr1(MCP23018_ADDR_WRITE)); return;
 	case 22: DO(twi_sm_addr2());
@@ -215,15 +233,24 @@ ISR(TWI_vect) {
 		
 		col++;
 		if (col <= 6) {
-			state++;
+			twi_sm_stopstart1();
+			state = 20; 
+			return;
 		} else {
-			mcp23018_errorcount = 0;
+			mcp23018_error = 0;
 			
 			col = 0;
 			mcp23018_doneflag = 1;
 
-			if (mcp23018_pollwaitflag) {
-				state++;
+			if (mcp23018_forcereset) {
+				mcp23018_forcereset = 0;
+				twi_sm_stopstart1();
+				state = 0; 
+				return;
+			} else if (mcp23018_pollwaitflag) {
+				twi_sm_stopstart1();
+				state = 20; 
+				return;
 			} else {
 				print("Time Budget Exceeded.\n");
 				state = 20;
@@ -232,23 +259,12 @@ ISR(TWI_vect) {
 			}
 		}
 	}
-	case 40: DO(twi_sm_stopstart1()); state = 20; return;
 	default:
 		print("Why are you even here?\n");
 	}
 err:
 	twi_sm_syncstop();
-	if (mcp23018_errorcount < 2) {
-		pdec8(state); print(" desynced.\n");
-		mcp23018_errorcount++;
-		state = 0;
-		twi_sm_start1();
-		mcp23018_begincallable = 0;
-		return;
-	} else {
-		if (mcp23018_errorcount == 2) print("LH lost\n");
-		state = 0;
-		mcp23018_begincallable = 1;
-		mcp23018_errorcount = 3; // prevent overflow
-	}
+	state = 0;
+	if (!mcp23018_error) print("LH lost\n");
+	mcp23018_error = 1;
 }

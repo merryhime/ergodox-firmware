@@ -23,8 +23,9 @@
 
 // Version 1.0: Initial Release
 // Version 1.1: Add support for Teensy 2.0
-// MerryMage: Modified to use a bitmap
+// MerryMage: Modified to use bitmaps.
 
+#include "config.h"
 #define USB_SERIAL_PRIVATE_INCLUDE
 #include "usb_keyboard_debug.h"
 
@@ -43,8 +44,13 @@
 // Windows, even though the driver is supplied by Microsoft, an
 // INF file is needed to load the driver.  These numbers need to
 // match the INF file.
-#define VENDOR_ID		0x16C0
-#define PRODUCT_ID		0x047D
+#if USB_OSX_JIS_HACK
+#define VENDOR_ID       0x05ac
+#define PRODUCT_ID      0x0222
+#else
+#define VENDOR_ID       0x16C0
+#define PRODUCT_ID      0x047D
+#endif
 
 
 // USB devices are supposed to implment a halt feature, which is
@@ -66,7 +72,13 @@
 
 #define KEYBOARD_INTERFACE	0
 #define KEYBOARD_ENDPOINT	3
+#if USB_REPORT_BITMAP16
+#define KEYBOARD_SIZE		16
+#elif USB_REPORT_BITMAP32
 #define KEYBOARD_SIZE		32
+#else
+#define KEYBOARD_SIZE		8
+#endif
 #define KEYBOARD_BUFFER		EP_DOUBLE_BUFFER
 
 #define DEBUG_INTERFACE		1
@@ -112,131 +124,116 @@ static const uint8_t PROGMEM device_descriptor[] = {
 	1					// bNumConfigurations
 };
 
-#if 0
+#if USB_REPORT_BITMAP16
+
 // Keyboard Protocol 1, HID 1.11 spec, Appendix B, page 59-60
-static const uint8_t PROGMEM keyboard_hid_report_desc_BOOT[] = {
-        0x05, 0x01,          // Usage Page (Generic Desktop),
-        0x09, 0x06,          // Usage (Keyboard),
-        0xA1, 0x01,          // Collection (Application),
+static const uint8_t PROGMEM keyboard_hid_report_desc_BITMAP16[] = {
+	0x05, 0x01,          // Usage Page (Generic Desktop),
+	0x09, 0x06,          // Usage (Keyboard),
+	0xA1, 0x01,          // Collection (Application),
 
-        0x75, 0x01,          //   Report Size (1),
-        0x95, 0x08,          //   Report Count (8),
-        0x05, 0x07,          //   Usage Page (Key Codes),
-        0x19, 0xE0,          //   Usage Minimum (224),
-        0x29, 0xE7,          //   Usage Maximum (231),
-        0x15, 0x00,          //   Logical Minimum (0),
-        0x25, 0x01,          //   Logical Maximum (1),
-        0x81, 0x02,          //   Input (Data, Variable, Absolute), ;Modifier byte
+	0x75, 0x01,          //   Report Size (1),
+	0x95, 0x08,          //   Report Count (8),
+	0x05, 0x07,          //   Usage Page (Key Codes),
+	0x19, 0xE0,          //   Usage Minimum (224),
+	0x29, 0xE7,          //   Usage Maximum (231),
+	0x15, 0x00,          //   Logical Minimum (0),
+	0x25, 0x01,          //   Logical Maximum (1),
+	0x81, 0x02,          //   Input (Data, Variable, Absolute), ;Modifier byte
 
-        0x95, 0x01,          //   Report Count (1),
-        0x75, 0x08,          //   Report Size (8),
-        0x81, 0x03,          //   Input (Constant),                 ;Reserved byte
+	0x95, 0x05,          //   Report Count (5),
+	0x75, 0x01,          //   Report Size (1),
+	0x05, 0x08,          //   Usage Page (LEDs),
+	0x19, 0x01,          //   Usage Minimum (1),
+	0x29, 0x05,          //   Usage Maximum (5),
+	0x91, 0x02,          //   Output (Data, Variable, Absolute), ;LED report
 
-        0x95, 0x05,          //   Report Count (5),
-        0x75, 0x01,          //   Report Size (1),
-        0x05, 0x08,          //   Usage Page (LEDs),
-        0x19, 0x01,          //   Usage Minimum (1),
-        0x29, 0x05,          //   Usage Maximum (5),
-        0x91, 0x02,          //   Output (Data, Variable, Absolute), ;LED report
+	0x95, 0x01,          //   Report Count (1),
+	0x75, 0x03,          //   Report Size (3),
+	0x91, 0x03,          //   Output (Constant),                 ;LED report padding
 
-        0x95, 0x01,          //   Report Count (1),
-        0x75, 0x03,          //   Report Size (3),
-        0x91, 0x03,          //   Output (Constant),                 ;LED report padding
+	0x95, 0x70,          //   Report Count (112),
+	0x75, 0x01,          //   Report Size (1),
+	0x15, 0x00,          //   Logical Minimum (0),
+	0x25, 0x01,          //   Logical Maximum(1),
+	0x05, 0x07,          //   Usage Page (Key Codes),
+	0x19, 0x04,          //   Usage Minimum (4),
+	0x29, 0x73,          //   Usage Maximum (115),
+	0x81, 0x02,          //   Input (Data, Variable, Absolute),
 
-        0x95, 0x06,          //   Report Count (6),
-        0x75, 0x08,          //   Report Size (8),
-        0x15, 0x00,          //   Logical Minimum (0),
-        0x25, 0x68,          //   Logical Maximum(104),
-        0x05, 0x07,          //   Usage Page (Key Codes),
-        0x19, 0x00,          //   Usage Minimum (0),
-        0x29, 0x68,          //   Usage Maximum (104),
-        0x81, 0x00,          //   Input (Data, Array),
+	0x95, 0x01,          //   Report Count (1),
+	0x75, 0x01,          //   Report Size (1),
+	0x15, 0x00,          //   Logical Minimum (0),
+	0x25, 0x01,          //   Logical Maximum (1),
+	0x09, KEY_MUTE,      //   Usage 
+	0x81, 0x02,          //   Input (Data, Variable, Absolute),
+	0x09, KEY_VOLUMEINC, //   Usage 
+	0x81, 0x02,          //   Input (Data, Variable, Absolute),
+	0x09, KEY_VOLUMEDEC, //   Usage 
+	0x81, 0x02,          //   Input (Data, Variable, Absolute),
+	0x09, KEY_JAPANESE_COMMA, //   Usage 
+	0x81, 0x02,          //   Input (Data, Variable, Absolute),
+	0x09, KEY_JAPANESE_RO,    //   Usage 
+	0x81, 0x02,          //   Input (Data, Variable, Absolute),
+	0x09, KEY_JAPANESE_YEN,   //   Usage 
+	0x81, 0x02,          //   Input (Data, Variable, Absolute),
+	0x09, KEY_JAPANESE_KANA,  //   Usage 
+	0x81, 0x02,          //   Input (Data, Variable, Absolute),
+	0x09, KEY_JAPANESE_EISU,  //   Usage 
+	0x81, 0x02,          //   Input (Data, Variable, Absolute),
 
-        0xc0                 // End Collection
+	0xc0                 // End Collection
 };
-#endif
 
-#if 0
-// Keyboard Protocol 1, HID 1.11 spec, Appendix B, page 59-60
-static const uint8_t PROGMEM keyboard_hid_report_desc_BITMAP16s[] = {
-        0x05, 0x01,          // Usage Page (Generic Desktop),
-        0x09, 0x06,          // Usage (Keyboard),
-        0xA1, 0x01,          // Collection (Application),
-
-        0x75, 0x01,          //   Report Size (1),
-        0x95, 0x08,          //   Report Count (8),
-        0x05, 0x07,          //   Usage Page (Key Codes),
-        0x19, 0xE0,          //   Usage Minimum (224),
-        0x29, 0xE7,          //   Usage Maximum (231),
-        0x15, 0x00,          //   Logical Minimum (0),
-        0x25, 0x01,          //   Logical Maximum (1),
-        0x81, 0x02,          //   Input (Data, Variable, Absolute), ;Modifier byte
-
-        0x95, 0x05,          //   Report Count (5),
-        0x75, 0x01,          //   Report Size (1),
-        0x05, 0x08,          //   Usage Page (LEDs),
-        0x19, 0x01,          //   Usage Minimum (1),
-        0x29, 0x05,          //   Usage Maximum (5),
-        0x91, 0x02,          //   Output (Data, Variable, Absolute), ;LED report
-
-        0x95, 0x01,          //   Report Count (1),
-        0x75, 0x03,          //   Report Size (3),
-        0x91, 0x03,          //   Output (Constant),                 ;LED report padding
-
-        0x95, 0x06,          //   Report Count (6),
-        0x75, 0x08,          //   Report Size (8),
-        0x15, 0x00,          //   Logical Minimum (0),
-        0x25, 0x68,          //   Logical Maximum(104),
-        0x05, 0x07,          //   Usage Page (Key Codes),
-        0x19, 0x00,          //   Usage Minimum (0),
-        0x29, 0x68,          //   Usage Maximum (104),
-        0x81, 0x00,          //   Input (Data, Array),
-
-        0xc0                 // End Collection
-};
-#endif
+#elif USB_REPORT_BITMAP32
 
 // Keyboard Protocol 1, HID 1.11 spec, Appendix B, page 59-60
 static const uint8_t PROGMEM keyboard_hid_report_desc_BITMAP32[] = {
-        0x05, 0x01,          // Usage Page (Generic Desktop),
-        0x09, 0x06,          // Usage (Keyboard),
-        0xA1, 0x01,          // Collection (Application),
+	0x05, 0x01,          // Usage Page (Generic Desktop),
+	0x09, 0x06,          // Usage (Keyboard),
+	0xA1, 0x01,          // Collection (Application),
 
-        0x75, 0x01,          //   Report Size (1),
-        0x95, 0x08,          //   Report Count (8),
-        0x05, 0x07,          //   Usage Page (Key Codes),
-        0x19, 0xE0,          //   Usage Minimum (224),
-        0x29, 0xE7,          //   Usage Maximum (231),
-        0x15, 0x00,          //   Logical Minimum (0),
-        0x25, 0x01,          //   Logical Maximum (1),
-        0x81, 0x02,          //   Input (Data, Variable, Absolute), ;Modifier byte
+	0x75, 0x01,          //   Report Size (1),
+	0x95, 0x08,          //   Report Count (8),
+	0x05, 0x07,          //   Usage Page (Key Codes),
+	0x19, 0xE0,          //   Usage Minimum (224),
+	0x29, 0xE7,          //   Usage Maximum (231),
+	0x15, 0x00,          //   Logical Minimum (0),
+	0x25, 0x01,          //   Logical Maximum (1),
+	0x81, 0x02,          //   Input (Data, Variable, Absolute), ;Modifier byte
 
-        0x95, 0x05,          //   Report Count (5),
-        0x75, 0x01,          //   Report Size (1),
-        0x05, 0x08,          //   Usage Page (LEDs),
-        0x19, 0x01,          //   Usage Minimum (1),
-        0x29, 0x05,          //   Usage Maximum (5),
-        0x91, 0x02,          //   Output (Data, Variable, Absolute), ;LED report
+	0x95, 0x05,          //   Report Count (5),
+	0x75, 0x01,          //   Report Size (1),
+	0x05, 0x08,          //   Usage Page (LEDs),
+	0x19, 0x01,          //   Usage Minimum (1),
+	0x29, 0x05,          //   Usage Maximum (5),
+	0x91, 0x02,          //   Output (Data, Variable, Absolute), ;LED report
 
-        0x95, 0x01,          //   Report Count (1),
-        0x75, 0x03,          //   Report Size (3),
-        0x91, 0x03,          //   Output (Constant),                 ;LED report padding
+	0x95, 0x01,          //   Report Count (1),
+	0x75, 0x03,          //   Report Size (3),
+	0x91, 0x03,          //   Output (Constant),                 ;LED report padding
 
-        0x95, 0xE0,          //   Report Count (224),
-        0x75, 0x01,          //   Report Size (1),
-        0x15, 0x00,          //   Logical Minimum (0),
-        0x25, 0x01,          //   Logical Maximum(1),
-        0x05, 0x07,          //   Usage Page (Key Codes),
-        0x19, 0x00,          //   Usage Minimum (0),
-        0x29, 0xDF,          //   Usage Maximum (223),
-        0x81, 0x02,          //   Input (Data, Variable, Absolute),
+	0x95, 0xDC,          //   Report Count (224),
+	0x75, 0x01,          //   Report Size (1),
+	0x15, 0x00,          //   Logical Minimum (0),
+	0x25, 0x01,          //   Logical Maximum(1),
+	0x05, 0x07,          //   Usage Page (Key Codes),
+	0x19, 0x04,          //   Usage Minimum (4),
+	0x29, 0xDF,          //   Usage Maximum (223),
+	0x81, 0x02,          //   Input (Data, Variable, Absolute),
 
-        0x95, 0x03,          //   Report Count (3),
-        0x75, 0x08,          //   Report Size (8),
-        0x81, 0x03,          //   Input (Constant),                 ;Padding to 32 bytes
+	0x95, 0x1C,          //   Report Count (28),
+	0x75, 0x01,          //   Report Size (1),
+	0x81, 0x03,          //   Input (Constant),                 ;Padding to 32 bytes
 
-        0xc0                 // End Collection
+	0xc0                 // End Collection
 };
+
+#else
+
+#error Unimplemented
+
+#endif
 
 
 static const uint8_t PROGMEM debug_hid_report_desc[] = {
@@ -283,7 +280,13 @@ static const uint8_t PROGMEM config1_descriptor[CONFIG1_DESC_SIZE] = {
 	0,					// bCountryCode
 	1,					// bNumDescriptors
 	0x22,					// bDescriptorType
+#if USB_REPORT_BITMAP16
+	sizeof(keyboard_hid_report_desc_BITMAP16),	// wDescriptorLength
+#elif USB_REPORT_BITMAP32
 	sizeof(keyboard_hid_report_desc_BITMAP32),	// wDescriptorLength
+#else 
+	sizeof(keyboard_hid_report_desc_BOOT),	// wDescriptorLength
+#endif
 	0,
 	// endpoint descriptor, USB spec 9.6.6, page 269-271, Table 9-13
 	7,					// bLength
@@ -354,7 +357,13 @@ static const struct descriptor_list_struct {
 } PROGMEM descriptor_list[] = {
 	{0x0100, 0x0000, device_descriptor, sizeof(device_descriptor)},
 	{0x0200, 0x0000, config1_descriptor, sizeof(config1_descriptor)},
+#if USB_REPORT_BITMAP16
+	{0x2200, KEYBOARD_INTERFACE, keyboard_hid_report_desc_BITMAP16, sizeof(keyboard_hid_report_desc_BITMAP16)},
+#elif USB_REPORT_BITMAP32
 	{0x2200, KEYBOARD_INTERFACE, keyboard_hid_report_desc_BITMAP32, sizeof(keyboard_hid_report_desc_BITMAP32)},
+#else
+	{0x2200, KEYBOARD_INTERFACE, keyboard_hid_report_desc_BOOT, sizeof(keyboard_hid_report_desc_BOOT)},
+#endif
 	{0x2100, KEYBOARD_INTERFACE, config1_descriptor+KEYBOARD_HID_DESC_OFFSET, 9},
 	{0x2200, DEBUG_INTERFACE, debug_hid_report_desc, sizeof(debug_hid_report_desc)},
 	{0x2100, DEBUG_INTERFACE, config1_descriptor+DEBUG_HID_DESC_OFFSET, 9},
@@ -378,20 +387,10 @@ static volatile uint8_t usb_configuration=0;
 // packet, or send a zero length packet.
 static volatile uint8_t debug_flush_timer=0;
 
-// which modifier keys are currently pressed
-// 1=left ctrl,    2=left shift,   4=left alt,    8=left gui
-// 16=right ctrl, 32=right shift, 64=right alt, 128=right gui
-uint8_t keyboard_modifier_keys=0;
-
-// which keys are currently pressed
-uint8_t keyboard_bitmap[28]={0,0,0,0,0, 0,0,0,0,0,
-                             0,0,0,0,0, 0,0,0,0,0,
-                             0,0,0,0,0, 0,0,0};
-
 // protocol setting from the host.  We use exactly the same report
 // either way, so this variable only stores the setting since we
 // are required to be able to report which setting is in use.
-static uint8_t keyboard_protocol=1;
+volatile uint8_t keyboard_protocol=DEFAULT_PROTOCOL_MODE;
 
 // the idle configuration, how often we send the report to the
 // host (ms * 4) even when it hasn't changed
@@ -402,6 +401,119 @@ static uint8_t keyboard_idle_count=0;
 
 // 1=num lock, 2=caps lock, 4=scroll lock, 8=compose, 16=kana
 volatile uint8_t keyboard_leds=0;
+
+/**************************************************************************
+ *
+ *  Key state
+ *
+ **************************************************************************/
+
+#if USB_REPORT_BITMAP16
+#define BITMAP_SIZE 14
+static uint8_t keyboard_bitmap[15]={0,0,0,0,0, 0,0,0,0,0, 0,0,0,0,0};
+
+void keyboard_bitmap_set(uint8_t key) {
+	switch (key) {
+	case KEY_MUTE:           keyboard_bitmap[BITMAP_SIZE] |= 0b00000001; return;
+	case KEY_VOLUMEINC:      keyboard_bitmap[BITMAP_SIZE] |= 0b00000010; return;
+	case KEY_VOLUMEDEC:      keyboard_bitmap[BITMAP_SIZE] |= 0b00000100; return;
+	case KEY_JAPANESE_COMMA: keyboard_bitmap[BITMAP_SIZE] |= 0b00001000; return;
+	case KEY_JAPANESE_RO:    keyboard_bitmap[BITMAP_SIZE] |= 0b00010000; return;
+	case KEY_JAPANESE_YEN:   keyboard_bitmap[BITMAP_SIZE] |= 0b00100000; return;
+	case KEY_JAPANESE_KANA:  keyboard_bitmap[BITMAP_SIZE] |= 0b01000000; return;
+	case KEY_JAPANESE_EISU:  keyboard_bitmap[BITMAP_SIZE] |= 0b10000000; return;
+	}
+	key-=4; 
+	if (key > BITMAP_SIZE*8) return;
+	keyboard_bitmap[key>>3] |= (1<<(key&0b111));
+}
+
+void keyboard_bitmap_clr(uint8_t key) {
+	switch (key) {
+	case KEY_MUTE:           keyboard_bitmap[BITMAP_SIZE] &= 0b11111110; return;
+	case KEY_VOLUMEINC:      keyboard_bitmap[BITMAP_SIZE] &= 0b11111101; return;
+	case KEY_VOLUMEDEC:      keyboard_bitmap[BITMAP_SIZE] &= 0b11111011; return;
+	case KEY_JAPANESE_COMMA: keyboard_bitmap[BITMAP_SIZE] &= 0b11110111; return;
+	case KEY_JAPANESE_RO:    keyboard_bitmap[BITMAP_SIZE] &= 0b11101111; return;
+	case KEY_JAPANESE_YEN:   keyboard_bitmap[BITMAP_SIZE] &= 0b11011111; return;
+	case KEY_JAPANESE_KANA:  keyboard_bitmap[BITMAP_SIZE] &= 0b10111111; return;
+	case KEY_JAPANESE_EISU:  keyboard_bitmap[BITMAP_SIZE] &= 0b01111111; return;
+	}
+	key-=4; 
+	if (key > BITMAP_SIZE*8) return;
+	keyboard_bitmap[key>>3] &= ~(1<<(key&0b111));
+}
+
+#elif USB_REPORT_BITMAP32 || USB_REPORT_BOOT
+#define BITMAP_SIZE 28
+static uint8_t keyboard_bitmap[28]={0,0,0,0,0, 0,0,0,0,0,
+                                    0,0,0,0,0, 0,0,0,0,0,
+                                    0,0,0,0,0, 0,0,0};
+
+void keyboard_bitmap_set(uint8_t key) {
+	key-=4; 
+	if (key > BITMAP_SIZE*8) return;
+	keyboard_bitmap[key>>3] |= (1<<(key&0b111));
+}
+
+void keyboard_bitmap_clr(uint8_t key) {
+	key-=4; 
+	if (key > BITMAP_SIZE*8) return;
+	keyboard_bitmap[key>>3] &= ~(1<<(key&0b111));
+}
+#endif
+
+// which modifier keys are currently pressed
+// 1=left ctrl,    2=left shift,   4=left alt,    8=left gui
+// 16=right ctrl, 32=right shift, 64=right alt, 128=right gui
+static uint8_t keyboard_modifier_keys=0;
+
+static uint8_t modifier_acquire_count[8];
+
+static void keyboard_modifiers_do(void) {
+	uint8_t state = 0;
+	if (modifier_acquire_count[0]) state |= 0b00000001;
+	if (modifier_acquire_count[1]) state |= 0b00000010;
+	if (modifier_acquire_count[2]) state |= 0b00000100;
+	if (modifier_acquire_count[3]) state |= 0b00001000;
+	if (modifier_acquire_count[4]) state |= 0b00010000;
+	if (modifier_acquire_count[5]) state |= 0b00100000;
+	if (modifier_acquire_count[6]) state |= 0b01000000;
+	if (modifier_acquire_count[7]) state |= 0b10000000;
+	keyboard_modifier_keys = state;
+}
+
+void keyboard_modifiers(uint8_t which) {
+	if (which & 0b00000001) modifier_acquire_count[0]++;
+	if (which & 0b00000010) modifier_acquire_count[1]++;
+	if (which & 0b00000100) modifier_acquire_count[2]++;
+	if (which & 0b00001000) modifier_acquire_count[3]++;
+	if (which & 0b00010000) modifier_acquire_count[4]++;
+	if (which & 0b00100000) modifier_acquire_count[5]++;
+	if (which & 0b01000000) modifier_acquire_count[6]++;
+	if (which & 0b10000000) modifier_acquire_count[7]++;
+	keyboard_modifiers_do();
+}
+void keyboard_modifiers_release(uint8_t which) {
+	if (which & 0b00000001) modifier_acquire_count[0]--;
+	if (which & 0b00000010) modifier_acquire_count[1]--;
+	if (which & 0b00000100) modifier_acquire_count[2]--;
+	if (which & 0b00001000) modifier_acquire_count[3]--;
+	if (which & 0b00010000) modifier_acquire_count[4]--;
+	if (which & 0b00100000) modifier_acquire_count[5]--;
+	if (which & 0b01000000) modifier_acquire_count[6]--;
+	if (which & 0b10000000) modifier_acquire_count[7]--;
+	keyboard_modifiers_do();
+}
+void keyboard_modifiers_override(uint8_t which, uint8_t newstate) {
+	uint8_t state = keyboard_modifier_keys;
+	state &= ~which;
+	state |= newstate & which;
+	keyboard_modifier_keys = state;
+}
+void keyboard_modifiers_override_release() {
+	keyboard_modifiers_do();
+}
 
 
 /**************************************************************************
@@ -417,11 +529,11 @@ void usb_init(void)
 	HW_CONFIG();
 	USB_FREEZE();				// enable USB
 	PLL_CONFIG();				// config PLL
-        while (!(PLLCSR & (1<<PLOCK))) ;	// wait for PLL lock
-        USB_CONFIG();				// start USB clock
-        UDCON = 0;				// enable attach resistor
+	while (!(PLLCSR & (1<<PLOCK))) ;	// wait for PLL lock
+	USB_CONFIG();				// start USB clock
+	UDCON = 0;				// enable attach resistor
 	usb_configuration = 0;
-        UDIEN = (1<<EORSTE)|(1<<SOFE);
+	UDIEN = (1<<EORSTE)|(1<<SOFE);
 	sei();
 }
 
@@ -432,38 +544,60 @@ uint8_t usb_configured(void)
 	return usb_configuration;
 }
 
-int8_t usb_keyboard_send_doBOOT()
+void usb_keyboard_send_doBOOT(void);
+void usb_keyboard_send_doREPORT(void);
+
+void usb_keyboard_send_doBOOT(void)
 {
-	uint8_t keyssent, i, j;
+	uint8_t keyssent=0, i, j;
 	UEDATX = keyboard_modifier_keys;
 	UEDATX = 0;
 	keyssent = 0;
-	for (i=0; i<28; i++) {
+	for (i=0; i<BITMAP_SIZE; i++) {
+		uint8_t kbm = keyboard_bitmap[i];
+		if (!kbm) continue;
 		for (j=0; j<8; j++) {
-			if (keyboard_bitmap[i] & (1 << j)) {
-				UEDATX = i*8+j;
+			if (kbm & (1 << j)) {
+				UEDATX = i*8+j+4;
 				keyssent++;
-				if (keyssent == 6) goto endkeyssent;
+				if (keyssent >= 6) return;
 			}
 		} 
 	}
-endkeyssent:
-	for (; keyssent<6; keyssent++) {
+	while (keyssent < 6) {
 		UEDATX = 0;
+		keyssent++;
 	}
 }
 
-int8_t usb_keyboard_send_doREPORT(void)
+#if USB_REPORT_BITMAP16
+void usb_keyboard_send_doREPORT(void)
 {
 	uint8_t i;
 	UEDATX = keyboard_modifier_keys;
-	for (i=0; i<28; i++) {
+	for (i=0; i<BITMAP_SIZE; i++) {
+		UEDATX = keyboard_bitmap[i];
+	}
+	UEDATX = keyboard_bitmap[BITMAP_SIZE];
+}
+#elif USB_REPORT_BITMAP32
+void usb_keyboard_send_doREPORT(void)
+{
+	uint8_t i;
+	UEDATX = keyboard_modifier_keys;
+	for (i=0; i<BITMAP_SIZE; i++) {
 		UEDATX = keyboard_bitmap[i];
 	}
 	UEDATX = 0;
 	UEDATX = 0;
 	UEDATX = 0;
 }
+#else
+void usb_keyboard_send_doREPORT(void)
+{
+	usb_keyboard_send_doBOOT();
+}
+#endif
 
 // send the contents of keyboard_keys and keyboard_modifier_keys
 int8_t usb_keyboard_send(void)
@@ -589,16 +723,16 @@ ISR(USB_GEN_vect)
 	uint8_t intbits, t;
 	static uint8_t div4=0;
 
-        intbits = UDINT;
-        UDINT = 0;
-        if (intbits & (1<<EORSTI)) {
+	intbits = UDINT;
+	UDINT = 0;
+	if (intbits & (1<<EORSTI)) {
 		UENUM = 0;
 		UECONX = 1;
 		UECFG0X = EP_TYPE_CONTROL;
 		UECFG1X = EP_SIZE(ENDPOINT0_SIZE) | EP_SINGLE_BUFFER;
 		UEIENX = (1<<RXSTPE);
 		usb_configuration = 0;
-        }
+	}
 	if ((intbits & (1<<SOFI)) && usb_configuration) {
 		t = debug_flush_timer;
 		if (t) {
@@ -657,9 +791,9 @@ static inline void usb_ack_out(void)
 //
 ISR(USB_COM_vect)
 {
-        uint8_t intbits;
+	uint8_t intbits;
 	const uint8_t *list;
-        const uint8_t *cfg;
+	const uint8_t *cfg;
 	uint8_t i, n, len, en;
 	uint8_t bmRequestType;
 	uint8_t bRequest;
@@ -670,19 +804,19 @@ ISR(USB_COM_vect)
 	const uint8_t *desc_addr;
 	uint8_t	desc_length;
 
-        UENUM = 0;
+	UENUM = 0;
 	intbits = UEINTX;
-        if (intbits & (1<<RXSTPI)) {
-                bmRequestType = UEDATX;
-                bRequest = UEDATX;
-                wValue = UEDATX;
-                wValue |= (UEDATX << 8);
-                wIndex = UEDATX;
-                wIndex |= (UEDATX << 8);
-                wLength = UEDATX;
-                wLength |= (UEDATX << 8);
-                UEINTX = ~((1<<RXSTPI) | (1<<RXOUTI) | (1<<TXINI));
-                if (bRequest == GET_DESCRIPTOR) {
+	if (intbits & (1<<RXSTPI)) {
+		bmRequestType = UEDATX;
+		bRequest = UEDATX;
+		wValue = UEDATX;
+		wValue |= (UEDATX << 8);
+		wIndex = UEDATX;
+		wIndex |= (UEDATX << 8);
+		wLength = UEDATX;
+		wLength |= (UEDATX << 8);
+		UEINTX = ~((1<<RXSTPI) | (1<<RXOUTI) | (1<<TXINI));
+		if (bRequest == GET_DESCRIPTOR) {
 			list = (const uint8_t *)descriptor_list;
 			for (i=0; ; i++) {
 				if (i >= NUM_DESC_LIST) {
@@ -723,7 +857,7 @@ ISR(USB_COM_vect)
 				usb_send_in();
 			} while (len || n == ENDPOINT0_SIZE);
 			return;
-                }
+		}
 		if (bRequest == SET_ADDRESS) {
 			usb_send_in();
 			usb_wait_in_ready();
@@ -743,8 +877,8 @@ ISR(USB_COM_vect)
 					UECFG1X = pgm_read_byte(cfg++);
 				}
 			}
-        		UERST = 0x1E;
-        		UERST = 0;
+			UERST = 0x1E;
+			UERST = 0;
 			return;
 		}
 		if (bRequest == GET_CONFIGURATION && bmRequestType == 0x80) {

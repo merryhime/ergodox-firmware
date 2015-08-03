@@ -23,6 +23,7 @@
 
 // Version 1.0: Initial Release
 
+#include "config.h"
 #include <avr/io.h>
 #include <avr/pgmspace.h>
 
