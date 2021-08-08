@@ -1,6 +1,6 @@
 # MerryMage's firmware for the Ergodox
 
-Ergodox ([ergodox.org] (http://www.ergodox.org)) is a split fully-reprogrammable ergonomic keyboard.
+Ergodox ([ergodox.io](https://www.ergodox.io/)) is a split fully-reprogrammable ergonomic keyboard.
 
 This project was written for three reasons:
 
